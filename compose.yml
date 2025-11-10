@@ -1,0 +1,10 @@
+services:
+  api1:
+    build: .
+    volumes:
+      - type: bind
+        source: ./app
+        target: /app
+    ports:
+      - "8000:8000"
+    command: "gunicorn -b 0.0.0.0:8000 --reload main:app"
