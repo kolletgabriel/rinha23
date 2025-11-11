@@ -8,3 +8,9 @@ services:
     ports:
       - "8000:8000"
     command: "gunicorn -b 0.0.0.0:8000 --reload main:app"
+  db:
+    image: postgres:17.6
+    environment:
+      POSTGRES_PASSWORD: rinha
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
