@@ -4,8 +4,14 @@ from typing import Annotated
 from flask import Flask, request
 from pydantic import BaseModel, ValidationError, StringConstraints, Field
 from psycopg2 import connect
-from psycopg2.errors import UniqueViolation
+from psycopg2.errors import UniqueViolation, InvalidTextRepresentation
+from psycopg2.extras import RealDictCursor
+from psycopg2.extensions import string_types
 
+
+# Disable conversions for date and longint, repsectively:
+string_types.pop(1082)
+string_types.pop(20)
 
 DSN = {
     'host': 'db',
@@ -16,7 +22,11 @@ DSN = {
 
 INSERT = """INSERT INTO users (nickname,fullname,dob,stack)
             VALUES (%s,%s,%s,%s)
-            RETURNING id"""
+            RETURNING id;"""
+
+SELECT = """SELECT * FROM users WHERE id = %s;"""
+
+COUNT = """SELECT count(*) FROM users;"""
 
 
 type String32 = Annotated[str, StringConstraints(max_length=32)]
@@ -34,10 +44,14 @@ class UserModel(BaseModel):
 
 
 app = Flask(__name__)
+
+app.json.sort_keys = False
+
 app.register_error_handler(400, lambda _: ('',400))
 app.register_error_handler(404, lambda _: ('',404))
 app.register_error_handler(ValidationError, lambda _: ('',422))
 app.register_error_handler(UniqueViolation, lambda _: ('',422))
+app.register_error_handler(InvalidTextRepresentation, lambda _: ('',400))
 
 
 @app.route('/')
@@ -53,3 +67,22 @@ def add_user():
         with conn.cursor() as cur:
             cur.execute(INSERT, new_user.to_tuple())
             return ('', 201, {'Location': f'/users/{cur.fetchone()[0]}'})
+
+
+@app.route('/users/<user_id>')
+def get_user(user_id):
+    with connect(**DSN) as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(SELECT, (user_id,))
+            result = cur.fetchone()
+            if not result:
+                return ('', 404)
+            return result
+
+
+@app.route('/users-count')
+def count_users():
+    with connect(**DSN) as conn:
+        with conn.cursor() as cur:
+            cur.execute(COUNT)
+            return cur.fetchone()[0]
