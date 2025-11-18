@@ -28,6 +28,9 @@ SELECT = """SELECT * FROM users WHERE id = %s;"""
 
 COUNT = """SELECT count(*) FROM users;"""
 
+SEARCH = """SELECT * FROM users
+            WHERE concat_cols(nickname,fullname,stack) ILIKE %s
+            LIMIT 50;"""
 
 type String32 = Annotated[str, StringConstraints(max_length=32)]
 type String100 = Annotated[str, StringConstraints(max_length=100)]
@@ -78,6 +81,18 @@ def get_user(user_id):
             if not result:
                 return ('', 404)
             return result
+
+
+@app.route('/users')
+def search_users():
+    query = request.args.get('q')
+    if not query:
+        return ('', 400)
+
+    with connect(**DSN) as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(SEARCH, (f'%{query}%',))
+            return cur.fetchall()
 
 
 @app.route('/users-count')

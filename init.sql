@@ -7,3 +7,21 @@ CREATE TABLE users (
         stack IS NULL OR (array_length(stack, 1) IS NOT NULL)
     )
 );
+
+CREATE FUNCTION concat_cols(
+    str1 VARCHAR(32),
+    str2 VARCHAR(100),
+    arr VARCHAR(32)[]
+) RETURNS VARCHAR IMMUTABLE AS $$
+    SELECT (
+        str1 || ' ' || str2 || ' ' || array_to_string(
+            coalesce(arr, '{}'::VARCHAR[]), ' '
+        )
+    )
+$$ LANGUAGE SQL;
+
+CREATE EXTENSION pg_trgm;
+CREATE INDEX idx_trgm_users_search ON users USING GIST (
+    concat_cols(nickname, fullname, stack)
+    gist_trgm_ops
+);
