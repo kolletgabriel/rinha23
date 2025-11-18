@@ -1,16 +1,52 @@
 services:
-  api1:
+
+  api1: &api
     build: .
     volumes:
       - type: bind
         source: ./app
         target: /app
-    ports:
-      - "8000:8000"
+    depends_on:
+      - db
+    expose:
+      - "8000"
     command: "gunicorn -b 0.0.0.0:8000 --reload main:app"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.2'
+          memory: '0.7GB'
+
+  api2:
+    <<: *api
+
   db:
     image: postgres:17.6
     environment:
       POSTGRES_PASSWORD: rinha
     volumes:
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - type: bind
+        source: ./init.sql
+        target: /docker-entrypoint-initdb.d/init.sql
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: '1.5GB'
+
+  lb:
+    image: nginx:latest
+    volumes:
+      - type: bind
+        source: ./nginx.conf
+        target: /etc/nginx/nginx.conf
+    depends_on:
+      - api1
+      - api2
+    ports:
+      - "9999:9999"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: '0.1GB'
