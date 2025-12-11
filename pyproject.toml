@@ -8,3 +8,10 @@ dependencies = [
     "psycopg2-binary",
     "pydantic",
 ]
+
+[project.optional-dependencies]
+dev = [
+    "hypothesis",
+    "pytest",
+    "requests"
+]
