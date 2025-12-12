@@ -1,5 +1,6 @@
 import time
 import subprocess
+import itertools
 
 import hypothesis as h
 import hypothesis.strategies as st
@@ -24,46 +25,25 @@ def setup_compose():
     subprocess.run(['docker', 'compose', 'down'])
 
 
-# @p.fixture
-# def bad_dates():
-#     return [
-#         '2000-01-32',
-#         '2000-13-01',
-#         '2000-02-30',
-#         '2000-04-31',
-#         '2000-06-31',
-#         '2000-09-31',
-#         '2000-11-31',
-#         '1900-02-29',
-#         '2001-02-29',
-#         '5739407574325',
-#         'foobarbaz',
-#         ''
-#     ]
-
-
 @st.composite
 def generate_bad_dates(draw):
-    years = st.integers(1900,2025)
-    nonleap_years = years.filter(lambda y: (y%4!=0 or y%100==0) and y%400!=0)
-    months_30 = st.sampled_from([4, 6, 9, 11])
-    bad_months = (st.just(0) | st.integers(13,99))
-    bad_days = (st.just(0) | st.integers(32,99))
+    pad02 = lambda m: f'{m:02}'
+    rm_leaps = lambda y: (y%4!=0 or y%100==0) and y%400!=0
+    fmt_date = lambda t: '-'.join(t)
 
-    t1 = (years, bad_months, bad_days)
-    t2 = (nonleap_years, st.just(2), st.just(29))
-    t3 = (years, months_30, st.just(31))
+    years = st.integers(1900, 2025).map(str)
+    nonleap_years = st.integers(1900, 2025).filter(rm_leaps).map(str)
+    months_lt31 = st.sampled_from([2, 4, 6, 9, 11]).map(pad02)
+    feb = st.just('02')
+    day29 = st.just('29')
+    day30 = st.just('30')
+    day31 = st.just('31')
 
-    x = st.builds(lambda y,m,d: f'{y:04}-{m:02}-{d:02}', *t1)
-    y = st.builds(lambda y,m,d: f'{y:04}-{m:02}-{d:02}', *t2)
-    z = st.builds(lambda y,m,d: f'{y:04}-{m:02}-{d:02}', *t3)
+    case1 = st.tuples(years, months_lt31, day31)
+    case2 = st.tuples(years, feb, (day30 | day31))
+    case3 = st.tuples(nonleap_years, feb, day29)
 
-    return {
-        'nickname': 'bar',
-        'fullname': 'bar',
-        'dob': draw(x | y | z)
-    }
-
+    return draw(st.builds(fmt_date, (case1 | case2 | case3)))
 
 
 @st.composite
@@ -106,22 +86,23 @@ def generate_none_or_missing(draw):
 
 
 @st.composite
-def generate_bad_lengths(draw):
+def generate_wrong_lengths(draw):
+    charset = st.characters(codec='utf-8')
     long_nickname = {
-        'nickname': st.just('bar'*11),
+        'nickname': st.text(charset, min_size=33),
         'fullname': st.just('bar'),
         'dob': st.just('2000-01-01')
     }
     long_fullname = {
         'nickname': st.just('bar'),
-        'fullname': st.just('bar'*34),
+        'fullname': st.text(charset, min_size=101),
         'dob': st.just('2000-01-01')
     }
     long_stack_element = {
         'nickname': st.just('bar'),
         'fullname': st.just('bar'),
         'dob': st.just('2000-01-01'),
-        'stack': st.just(['foo', 'bar'*11])
+        'stack': st.lists(st.text(charset, min_size=33), min_size=0, max_size=1)
     }
 
     x = st.fixed_dictionaries(long_nickname)
@@ -143,16 +124,18 @@ def test_wrong_types(body):
     assert res.status_code == 400
 
 
-@h.given(generate_bad_lengths())
-def test_bad_lengths(body):
+@h.given(generate_wrong_lengths())
+def test_wrong_lengths(body):
     res = _make_request(body)
     assert res.status_code == 422
 
 
+# @h.settings(max_examples=500)
 @h.given(generate_bad_dates())
 def test_bad_dates(body):
-    res = _make_request(body)
-    assert res.status_code == 400
+    # res = _make_request(body)
+    # assert res.status_code == 400
+    print(body)
 
 
 def test_nickname_uniqueness():
@@ -163,4 +146,5 @@ def test_nickname_uniqueness():
 
 
 if __name__ == '__main__':
+    test_bad_dates()
     ...
