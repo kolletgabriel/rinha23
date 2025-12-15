@@ -1,7 +1,7 @@
 from flask import Flask, request, json
 from psycopg2.errors import UniqueViolation, InvalidTextRepresentation
 from psycopg2.extensions import TRANSACTION_STATUS_INERROR
-from pydantic import ValidationError
+from pydantic import ValidationError, TypeAdapter, UUID4
 
 import schema
 import db
@@ -39,6 +39,11 @@ def add_user():
 
 @app.route('/users/<user_id>')
 def get_user(user_id):
+    try:
+        TypeAdapter(UUID4).validate_python(user_id)
+    except ValidationError:
+        return ('', 404)
+
     CUR.execute(db.SELECT_QUERY, (user_id,))
     result = CUR.fetchone()
     if not result:
