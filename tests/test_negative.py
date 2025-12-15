@@ -1,28 +1,7 @@
-import time
-import subprocess
-import itertools
-
 import hypothesis as h
 import hypothesis.strategies as st
-import pytest as p
-import requests as r
 
-
-BASE_URL = 'http://localhost:9999'
-
-
-def _make_request(body):
-    return r.post(f'{BASE_URL}/users',
-                  headers={'Content-Type':'application/json'},
-                  json=body)
-
-
-@p.fixture(scope='session', autouse=True)
-def setup_compose():
-    subprocess.run(['docker', 'compose', 'up', '-d'])
-    time.sleep(3)  # wait
-    yield
-    subprocess.run(['docker', 'compose', 'down'])
+import utils
 
 
 @st.composite
@@ -43,17 +22,21 @@ def generate_bad_dates(draw):
     case2 = st.tuples(years, feb, (day30 | day31))
     case3 = st.tuples(nonleap_years, feb, day29)
 
-    return draw(st.builds(fmt_date, (case1 | case2 | case3)))
+    return {
+        'nickname': 'bar',
+        'fullname': 'bar',
+        'dob': draw(st.builds(fmt_date, (case1 | case2 | case3)))
+    }
 
 
 @st.composite
 def generate_wrong_types(draw):
-    _primitives = (st.integers(-1,1) | st.floats(-1,1) | st.booleans())
-    _strings = st.text(st.characters(codec='utf-8'), max_size=10)
-    _lists = st.lists(_primitives | _strings)
-    _dicts = st.dictionaries(_strings, _primitives)
-    _containers = (_lists | _dicts)
-    wrong_types = (_primitives | _containers)
+    primitives = (st.integers(-1,1) | st.floats(-1,1) | st.booleans())
+    strings = st.text(st.characters(codec='utf-8'), max_size=10)
+    lists = st.lists(primitives | strings)
+    dicts = st.dictionaries(strings, primitives)
+    containers = (lists | dicts)
+    wrong_types = (primitives | containers)
 
     return {
         'nickname': draw(wrong_types),
@@ -65,24 +48,24 @@ def generate_wrong_types(draw):
 
 @st.composite
 def generate_none_or_missing(draw):
-    no_nickname = {
+    no_nickname: dict[str, st.SearchStrategy] = {
         'fullname': st.just('bar'),
         'dob': st.just('2000-01-01')
     }
-    no_fullname = {
+    no_fullname: dict[str, st.SearchStrategy] = {
         'nickname': st.just('bar'),
         'dob': st.just('2000-01-01')
     }
-    no_dob = {
+    no_dob: dict[str, st.SearchStrategy] = {
         'nickname': st.just('bar'),
         'fullname': st.just('bar')
     }
 
-    x = st.fixed_dictionaries(no_nickname, optional={'nickname': st.none()})
-    y = st.fixed_dictionaries(no_fullname, optional={'fullname': st.none()})
-    z = st.fixed_dictionaries(no_dob, optional={'dob': st.none()})
+    case1 = st.fixed_dictionaries(no_nickname, optional={'nickname': st.none()})
+    case2 = st.fixed_dictionaries(no_fullname, optional={'fullname': st.none()})
+    case3 = st.fixed_dictionaries(no_dob, optional={'dob': st.none()})
 
-    return draw(x | y | z)
+    return draw(case1 | case2 | case3)
 
 
 @st.composite
@@ -105,46 +88,63 @@ def generate_wrong_lengths(draw):
         'stack': st.lists(st.text(charset, min_size=33), min_size=0, max_size=1)
     }
 
-    x = st.fixed_dictionaries(long_nickname)
-    y = st.fixed_dictionaries(long_fullname)
-    z = st.fixed_dictionaries(long_stack_element)
+    case1 = st.fixed_dictionaries(long_nickname)
+    case2 = st.fixed_dictionaries(long_fullname)
+    case3 = st.fixed_dictionaries(long_stack_element)
 
-    return draw(x | y | z)
-
-
-@h.given(generate_none_or_missing())
-def test_none_or_missing(body):
-    res = _make_request(body)
-    assert res.status_code == 422
+    return draw(case1 | case2 | case3)
 
 
-@h.given(generate_wrong_types())
-def test_wrong_types(body):
-    res = _make_request(body)
-    assert res.status_code == 400
+@st.composite
+def generate_maybe_uuids(draw):
+    # Valid, but (hopefully) non-existent:
+    case1 = st.uuids(allow_nil=True)
 
+    # (probaly) Invalid:
+    case2 = st.text(st.characters(codec='utf-8'), min_size=1, max_size=128)
 
-@h.given(generate_wrong_lengths())
-def test_wrong_lengths(body):
-    res = _make_request(body)
-    assert res.status_code == 422
-
-
-# @h.settings(max_examples=500)
-@h.given(generate_bad_dates())
-def test_bad_dates(body):
-    # res = _make_request(body)
-    # assert res.status_code == 400
-    print(body)
+    return draw(case1 | case2)
 
 
 def test_nickname_uniqueness():
     body = {'nickname': 'foo', 'fullname': 'bar', 'dob': '2000-01-01'}
-    _make_request(body)
-    res = _make_request(body)
-    assert res.status_code == 422
+    utils.create(body)
+    assert utils.create(body).status_code == 422
+
+
+@h.given(generate_none_or_missing())
+def test_none_or_missing(body):
+    assert utils.create(body).status_code == 422
+
+
+@h.given(generate_wrong_types())
+def test_wrong_types(body):
+    assert utils.create(body).status_code == 400
+
+
+@h.given(generate_wrong_lengths())
+def test_wrong_lengths(body):
+    assert utils.create(body).status_code == 422
+
+
+@h.given(generate_bad_dates())
+def test_bad_dates(body):
+    assert utils.create(body).status_code == 400
+
+
+@h.given(generate_maybe_uuids())
+def test_fetch_404(maybe_uuid):
+    assert utils.get_user(maybe_uuid).status_code in {400, 404}
+
+
+def test_num_users():
+    assert utils.get_users_count() == 1
+
+
+def test_bad_search():
+    assert utils.search(None).status_code == 400
+    assert utils.search({'q': ''}).status_code == 400
 
 
 if __name__ == '__main__':
-    test_bad_dates()
     ...
