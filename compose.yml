@@ -6,6 +6,7 @@ services:
       - type: bind
         source: ./app
         target: /app
+        read_only: true
     depends_on:
       - db
     expose:
@@ -28,6 +29,8 @@ services:
       - type: bind
         source: ./init.sql
         target: /docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
     deploy:
       resources:
         limits:

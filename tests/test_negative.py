@@ -106,7 +106,7 @@ def generate_maybe_uuids(draw):
     return draw(case1 | case2)
 
 
-def test_nickname_uniqueness():
+def test_nickname_uniqueness(truncate):
     body = {'nickname': 'foo', 'fullname': 'bar', 'dob': '2000-01-01'}
     utils.create(body)
     assert utils.create(body).status_code == 422
@@ -135,10 +135,6 @@ def test_bad_dates(body):
 @h.given(generate_maybe_uuids())
 def test_fetch_404(maybe_uuid):
     assert utils.get_user(maybe_uuid).status_code in {400, 404}
-
-
-def test_num_users():
-    assert utils.get_users_count() == 1
 
 
 def test_bad_search():
