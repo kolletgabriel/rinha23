@@ -1,3 +1,6 @@
+benchmarks/results/*
+!benchmarks/results/.keep
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
