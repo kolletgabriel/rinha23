@@ -3,9 +3,7 @@ CREATE TABLE users (
     nickname VARCHAR(32) UNIQUE NOT NULL,
     fullname VARCHAR(100) NOT NULL,
     dob DATE NOT NULL,
-    stack VARCHAR(32)[] CHECK (
-        stack IS NULL OR (array_length(stack, 1) IS NOT NULL)
-    )
+    stack VARCHAR(32)[]
 );
 
 CREATE FUNCTION concat_cols(
